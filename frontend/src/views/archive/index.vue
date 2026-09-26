@@ -38,15 +38,18 @@
         <tr v-for="row in rows" :key="String(row.id)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td class="row-actions">
-            <button
-              v-for="action in actions"
-              :key="action"
-              class="link"
-              type="button"
-              @click="runAction(action, row)"
-            >
-              {{ action }}
-            </button>
+            <template v-if="canOperate(row)">
+              <button
+                v-for="action in actions"
+                :key="action"
+                class="link"
+                type="button"
+                @click="runAction(action, row)"
+              >
+                {{ action }}
+              </button>
+            </template>
+            <span v-else class="readonly-hint">仅建档人与本班组可操作</span>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -66,20 +69,26 @@
 import { onMounted, ref } from 'vue'
 
 import { request } from '@/api/client'
+import { useSessionStore } from '@/stores/session'
 
 type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/archive'
-const columns = ["档案编号", "关联设施", "档案类型", "资料名称", "存放位置", "归档人员", "归档日期", "档案状态"]
-const actions = ["提交归档", "确认归档", "作废档案"]
+const columns = ["档案编号", "关联设施", "档案类型", "资料名称", "存放位置", "归档人员", "归档日期", "档案状态", "经手人"]
+const actions = ["提交归档", "确认归档", "退回补充", "作废档案"]
 const statuses = ["待归档", "已归档", "待补充", "已作废"]
 const stats = [{"label": "待归档记录", "value": 0}, {"label": "本月归档数", "value": 0}, {"label": "待补充档案", "value": 0}]
 
+const session = useSessionStore()
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+
+function canOperate(row: Row) {
+  return row['建档人'] === session.operator || row['班组'] === session.team
+}
 
 function resetFilters() {
   filters.value = {}
@@ -99,10 +108,13 @@ async function runAction(action: string, row: Row) {
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({
+        values: { action, 操作人: session.operator, 班组: session.team },
+      }),
     })
-    if (!response.ok) {
-      throw new Error('设施档案动作未生效，请稍后重试')
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.message ?? payload?.detail ?? '设施档案动作未生效，请稍后重试')
     }
     await reload()
   } catch (error) {

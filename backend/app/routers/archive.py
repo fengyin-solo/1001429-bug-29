@@ -1,4 +1,4 @@
-"""设施档案接口：维护档案记录，覆盖提交归档、确认归档、作废档案等动作。"""
+"""设施档案接口：维护档案记录，覆盖提交归档、确认归档、退回补充、作废档案等动作。"""
 from __future__ import annotations
 
 from typing import Any
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/archive", tags=["设施档案"])
 
 service = ArchiveService()
 
-LIST_FIELDS = ["档案编号", "关联设施", "档案类型", "资料名称", "存放位置", "归档人员", "归档日期", "档案状态"]
+LIST_FIELDS = ["档案编号", "关联设施", "档案类型", "资料名称", "存放位置", "归档人员", "归档日期", "档案状态", "经手人"]
 STATUSES = ["待归档", "已归档", "待补充", "已作废"]
 
 
@@ -50,9 +50,11 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
-    """对单条档案记录执行提交归档、确认归档、作废档案；不允许的动作会被拦下并说明原因。"""
+    """对单条档案记录执行提交归档、确认归档、退回补充、作废档案；越权或不允许的动作会被拦下并说明原因。"""
     action = str(payload.values.get("action") or "").strip()
-    entry, message = service.run_action(entry_id, action)
+    operator = str(payload.values.get("操作人") or "").strip()
+    team = str(payload.values.get("班组") or "").strip()
+    entry, message = service.run_action(entry_id, action, operator=operator, team=team)
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
